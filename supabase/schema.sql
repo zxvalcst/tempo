@@ -1,123 +1,191 @@
-# CLAUDE.md
+-- =====================================================================
+-- Student planner app: Supabase schema
+-- Run once in Supabase Dashboard -> SQL Editor -> New query -> Run.
+-- Safe to read top to bottom: tables -> triggers -> indexes -> RLS.
+-- =====================================================================
 
-## Project
-A web app for university students that plans their week and helps them focus.
-Working name: **Tempo** (placeholder, may change).
+-- ---------- Helper: auto-update updated_at ----------
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
 
-Pitch: *"A study planner that learns how long things actually take you."*
+-- ---------- profiles (1 row per auth user) ----------
+create table public.profiles (
+  id                  uuid primary key references auth.users (id) on delete cascade,
+  name                text,
+  timezone            text not null default 'Asia/Jakarta',
+  sleep_start         time not null default '23:00',
+  sleep_end           time not null default '06:00',
+  earliest_class_time time,
+  work_hours_per_day  numeric(3,1) not null default 4
+                      check (work_hours_per_day between 1 and 16),
+  pace_factor         numeric(4,2) not null default 1.00
+                      check (pace_factor between 0.5 and 3.0),
+  onboarded           boolean not null default false,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
 
-Core loop: the user enters tasks and fixed commitments -> an AI-assisted planner
-builds a weekly schedule -> the user works in a focus timer that logs real focus
-time -> the planner uses that data to correct future estimates and replan.
+create trigger profiles_updated_at
+  before update on public.profiles
+  for each row execute function public.set_updated_at();
 
-Hard deadline: submission on **Oct 6, 23:59**. Prefer a small, polished, working
-feature set over a large unfinished one.
+-- Auto-create a profile row whenever someone signs up
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id, name)
+  values (new.id, new.raw_user_meta_data ->> 'name');
+  return new;
+end;
+$$;
 
-## Stack
-- Next.js (App Router) + TypeScript + Tailwind CSS
-- Supabase: Postgres, Auth (email + password only, no OAuth), Row Level Security
-- Server-side LLM call (provider wrapped in `src/lib/planner/llm.ts` so it is swappable)
-- Deployed on Vercel
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
 
-## Commands
-- `npm run dev`: dev server
-- `npm run build`: production build (must pass before finishing a task)
-- `npm run lint`: lint
-- `npx tsc --noEmit`: type check
+-- ---------- courses ----------
+create table public.courses (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  name       text not null,
+  color      text not null default '#6366f1',
+  created_at timestamptz not null default now()
+);
 
-## Environment variables
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `LLM_API_KEY` (server only, never prefixed with NEXT_PUBLIC)
+-- ---------- tasks (assignments, projects, exams, quizzes) ----------
+create table public.tasks (
+  id                uuid primary key default gen_random_uuid(),
+  user_id           uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  course_id         uuid references public.courses (id) on delete set null,
+  title             text not null,
+  type              text not null default 'assignment'
+                    check (type in ('assignment', 'project', 'exam', 'quiz', 'other')),
+  deadline          timestamptz not null,
+  grade_weight      numeric(5,2) not null default 0
+                    check (grade_weight between 0 and 100),
+  difficulty        smallint not null default 3
+                    check (difficulty between 1 and 5),
+  estimated_hours   numeric(4,1) not null default 1
+                    check (estimated_hours > 0),
+  priority_override smallint
+                    check (priority_override between 1 and 5),
+  is_group          boolean not null default false,
+  status            text not null default 'todo'
+                    check (status in ('todo', 'in_progress', 'done')),
+  notes             text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
 
-Never commit `.env.local`. Never use the Supabase service role key in client code.
+create trigger tasks_updated_at
+  before update on public.tasks
+  for each row execute function public.set_updated_at();
 
-## Folder structure
-```
-src/
-  app/
-    (auth)/login, signup        public pages
-    (app)/                      protected pages
-      onboarding/
-      dashboard/
-      tasks/
-      commitments/
-      calendar/
-      focus/
-      settings/
-    api/plan/generate/          POST: build a plan (server only)
-    api/plan/replan/            POST: replan remaining work
-  components/                   reusable UI, no database calls inside
-  lib/
-    supabase/                   browser client, server client, session refresh
-    data/                       ALL database access lives here
-      profile.ts tasks.ts commitments.ts courses.ts sessions.ts focusLogs.ts
-    planner/
-      score.ts                  priority score
-      slots.ts                  free-slot finder
-      schedule.ts               orchestrates plan generation
-      llm.ts                    LLM call
-      validate.ts               checks LLM output
-    focus/
-      timer.ts                  timestamp-based timer
-      pip.ts                    Picture-in-Picture helper + fallbacks
-    types.ts                    shared types matching the database
-supabase/
-  schema.sql                    source of truth for the database
-```
+-- ---------- commitments (fixed blocks: classes, meetings, church, etc.) ----------
+-- day_of_week: 0 = Sunday ... 6 = Saturday (same as JavaScript Date.getDay())
+-- Times are LOCAL wall-clock times in profiles.timezone.
+create table public.commitments (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  title         text not null,
+  category      text not null default 'other'
+                check (category in ('class', 'org', 'church', 'committee', 'other')),
+  is_recurring  boolean not null default true,
+  day_of_week   smallint check (day_of_week between 0 and 6),
+  specific_date date,
+  start_time    time not null,
+  end_time      time not null,
+  created_at    timestamptz not null default now(),
+  check (end_time > start_time),
+  check (
+    (is_recurring and day_of_week is not null)
+    or (not is_recurring and specific_date is not null)
+  )
+);
 
-## Data model (see `supabase/schema.sql`)
-profiles, courses, tasks, commitments, sessions, focus_logs.
-All tables except profiles have `user_id` (defaults to `auth.uid()`) and an RLS
-policy limiting rows to their owner. Times are stored as UTC `timestamptz`;
-commitment times are local wall-clock times in `profiles.timezone`
-(default `Asia/Jakarta`). `day_of_week`: 0 = Sunday ... 6 = Saturday.
+-- ---------- sessions (planned work blocks generated by the planner) ----------
+-- On replan: delete future rows with status 'planned', insert a new batch with
+-- plan_version = previous max + 1. Rows with done/skipped stay as history.
+create table public.sessions (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  task_id       uuid not null references public.tasks (id) on delete cascade,
+  planned_start timestamptz not null,
+  planned_end   timestamptz not null,
+  status        text not null default 'planned'
+                check (status in ('planned', 'done', 'skipped', 'moved')),
+  ai_reason     text,
+  plan_version  integer not null default 1,
+  created_at    timestamptz not null default now(),
+  check (planned_end > planned_start)
+);
 
-## Planner rules
-1. **Compute first, ask the LLM second.** Priority score is deterministic:
-   urgency (days to deadline) x grade weight x difficulty factor, or
-   `priority_override` if set.
-2. Effective hours for a task = `estimated_hours x profiles.pace_factor`.
-3. Free slots = working hours minus sleep window, minus commitments, minus
-   existing done/in-progress sessions. Respect `earliest_class_time` (no late
-   slots the night before an early class) and `work_hours_per_day`.
-4. The LLM receives the tasks (with scores) and free slots, and returns **only
-   JSON**: `[{ task_id, start, end, reason }]`. `reason` is a one-sentence "why
-   here" shown to the user.
-5. `validate.ts` must reject output that: overlaps a commitment or another
-   session, falls in the sleep window, exceeds the daily limit, lands after the
-   task deadline, or references an unknown task. On failure, fall back to a
-   deterministic placement so the user always gets a valid plan.
-6. Replan: delete future sessions with status `planned`, insert a new batch with
-   `plan_version = previous max + 1`. Keep done/skipped sessions as history.
-7. Pace factor update: average of (actual focused hours / estimated hours) over
-   completed tasks, clamped to 0.5-3.0.
+-- ---------- focus_logs (written by the focus timer) ----------
+-- mode: 'strict'   = fullscreen, tab switches count as distractions
+--       'flexible' = floating/minimized timer, only time is logged
+create table public.focus_logs (
+  id                uuid primary key default gen_random_uuid(),
+  user_id           uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  task_id           uuid references public.tasks (id) on delete set null,
+  session_id        uuid references public.sessions (id) on delete set null,
+  mode              text not null default 'strict'
+                    check (mode in ('strict', 'flexible')),
+  started_at        timestamptz not null,
+  ended_at          timestamptz not null,
+  focused_minutes   numeric(6,1) not null check (focused_minutes >= 0),
+  distraction_count integer not null default 0 check (distraction_count >= 0),
+  created_at        timestamptz not null default now(),
+  check (ended_at >= started_at)
+);
 
-## Focus mode rules
-- Two modes: **strict** (fullscreen via the Fullscreen API, tab switches counted
-  as distractions through the Page Visibility API) and **flexible** (timer
-  floats in a small window, only time is logged, no distraction counting).
-- Floating timer: use the Document Picture-in-Picture API when available
-  (Chromium desktop). Fallback: show the countdown in `document.title`.
-- Timer correctness: store the start timestamp and compute remaining time from
-  the clock. Never rely on counting `setInterval` ticks (background tabs throttle).
-- Write a `focus_logs` row when a session ends, including if the user stops early.
-- A web app cannot block device notifications. Do not claim or attempt it.
+-- ---------- Indexes ----------
+create index tasks_user_deadline_idx      on public.tasks (user_id, deadline);
+create index tasks_user_status_idx        on public.tasks (user_id, status);
+create index commitments_user_idx         on public.commitments (user_id);
+create index sessions_user_start_idx      on public.sessions (user_id, planned_start);
+create index sessions_task_idx            on public.sessions (task_id);
+create index focus_logs_user_started_idx  on public.focus_logs (user_id, started_at);
+create index focus_logs_task_idx          on public.focus_logs (task_id);
 
-## Constraints
-- Do not add dependencies without a clear reason; mention it when you do.
-- No database calls inside UI components. Go through `src/lib/data/`.
-- Keep RLS enabled on every table. If you change the schema, update
-  `supabase/schema.sql` and `src/lib/types.ts` together and tell me, since I run
-  the SQL manually in Supabase.
-- Validate all user input on the server as well as the client.
-- Handle loading, empty, success, and error states for every screen that fetches data.
-- Keep changes focused. No unrelated refactors.
-- LLM calls happen only in server routes. The API key never reaches the browser.
+-- ---------- Row Level Security ----------
+-- RLS is what keeps users from reading each other's data, because the browser
+-- talks to the database directly. Never disable it.
 
-## Workflow
-- For anything bigger than a small fix, plan first and wait for my go-ahead.
-- Build in thin vertical slices, each working end to end (UI -> data layer -> database).
-- Before finishing a task: `npx tsc --noEmit`, `npm run lint`, and `npm run build` pass.
-- Commit after each working slice with a clear message.
-- Keep the UI clean and simple: this will be shown in a short demo.
+alter table public.profiles enable row level security;
+
+create policy profiles_own on public.profiles
+  for all to authenticated
+  using (id = (select auth.uid()))
+  with check (id = (select auth.uid()));
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['courses', 'tasks', 'commitments', 'sessions', 'focus_logs']
+  loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format(
+      'create policy %I on public.%I for all to authenticated
+         using (user_id = (select auth.uid()))
+         with check (user_id = (select auth.uid()))',
+      t || '_own', t
+    );
+  end loop;
+end;
+$$;
+
+-- Make sure logged-in users can use the tables (RLS still restricts rows)
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
