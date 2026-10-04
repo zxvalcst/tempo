@@ -63,8 +63,9 @@ See `CONSTRAINTS.md`. The ones that bite most often: RLS stays on for every tabl
 ## Database rules that are easy to get wrong
 
 - The schema **has been run**: all six tables exist and RLS is enabled. Treat the live database as real — do not write code that assumes a table is missing.
-- **Replan deletes only future `planned` sessions.** `done`, `skipped`, and `moved` stay as history.
-- **`moved` means the user moved it.** Never overwrite those times, and treat them as occupied when planning — same for sessions of a task already `in_progress`.
+- **Replan deletes only future `planned` sessions.** `done`, `skipped`, and `moved` rows stay.
+- **Fixed time never moves**: commitments, `moved` sessions, `done` sessions, and any session with a focus timer currently running. `moved` means the user placed it — never overwrite those times. `skipped` is terminal history and does not block.
+- **`tasks.status = 'in_progress'` does not occupy time** by itself; a task blocks hours only through its own sessions. Ranking comes solely from the priority score — status never re-orders it.
 - **Deleting a task cascades to its sessions.** The confirmation dialog must say how many planned sessions will be removed before the delete happens.
 - **The pace factor ignores `focus_logs` rows with a null `task_id`** — untimed free focus has no estimate to compare against.
 - **Store `focused_minutes` with one decimal** (`numeric(6,1)`), computed from elapsed milliseconds. Never a rounded integer.

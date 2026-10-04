@@ -122,16 +122,19 @@ Postgres
 
 Compute first, ask the LLM second. The LLM chooses *ordering and phrasing*, never *validity*.
 
-1. **Score.** `src/lib/planner/score.ts` computes a deterministic priority per task: deadline urgency (days remaining) × grade weight × difficulty factor, or `priority_override` when the user set one (a `smallint` 1–5, so it is a rank, not a score to blend). A task with `status = 'in_progress'` is treated as already started and ranks ahead of untouched work. No randomness, no LLM.
+1. **Score.** `src/lib/planner/score.ts` computes a deterministic priority per task: deadline urgency (days remaining) × grade weight × difficulty factor, or `priority_override` when the user set one (a `smallint` 1–5, so it is a rank, not a score to blend). Ranking comes from this score and nothing else — task status, type, and course never re-order it. No randomness, no LLM.
 2. **Estimate.** `effective_hours = estimated_hours × profiles.pace_factor`.
-3. **Free slots.** `src/lib/planner/slots.ts` walks the week and carves out working hours minus the sleep window, minus commitments, minus every existing session that will survive the plan. It respects `earliest_class_time` (nothing late the night before an early class) and `work_hours_per_day`.
-   - **Occupied time** = all commitments plus all sessions **except the future `planned` rows being replaced**. `done`, `skipped`, and `moved` sessions stay, so they block. A `moved` session is user-owned: never overwrite its times and never plan into them.
-   - Sessions belonging to a task the user already started (`tasks.status = 'in_progress'`) are occupied too — elapsed work is still elapsed.
+3. **Free slots.** `src/lib/planner/slots.ts` walks the week and carves out working hours minus the sleep window, minus fixed time, minus the future `planned` sessions being replaced. It respects `earliest_class_time` (nothing late the night before an early class) and `work_hours_per_day`.
+   - **Fixed time never moves**, and is exactly: all **commitments** · **`moved` sessions** (the user placed these — never overwrite the times) · **`done` sessions** (already-happened history) · **any session with a focus timer currently running**.
+   - `skipped` is terminal history like `done`: not re-planned, not blocking.
+   - Future `planned` sessions are the only rows a replan replaces. Everything else in the week is fixed.
+   - `tasks.status = 'in_progress'` does **not** by itself occupy time. A task being worked on blocks its hours only through its own sessions.
+   - A running focus timer has no `focus_logs` row yet (`ended_at` is `NOT NULL`), so the in-flight focus must reach the planner explicitly — the focus flow reports its `session_id` and `started_at` when it starts, and `schedule.ts` treats that window as fixed.
 4. **Ask.** `src/lib/planner/llm.ts` sends the scored tasks and the free slots, and expects **only JSON**: `[{ "task_id", "start", "end", "reason" }]`. `reason` is the one-sentence "why here" shown next to the session. The LLM's `start` / `end` / `reason` are mapped on insert to the `planned_start` / `planned_end` / `ai_reason` columns — keep that translation in one place inside `schedule.ts`.
-5. **Validate.** `src/lib/planner/validate.ts` rejects the output if a session overlaps a commitment or a surviving session, falls in the sleep window, breaks the daily hour limit, is not `planned_end > planned_start`, starts in the past for the current week, lands after the task's deadline, or references an unknown `task_id`.
+5. **Validate.** `src/lib/planner/validate.ts` rejects the output if a session overlaps fixed time or another planned session, falls in the sleep window, breaks the daily hour limit, is not `planned_end > planned_start`, starts in the past for the current week, lands after the task's deadline, or references an unknown `task_id`.
 6. **Fall back.** On any failure — invalid JSON, validation rejection, timeout, provider error — `schedule.ts` places sessions deterministically (highest score first, earliest valid slot). The user always gets a valid plan; the LLM only adds reasons.
 
-Stretch: **replan** deletes only future `planned` sessions and inserts a new batch with `plan_version = max + 1`. `done`, `skipped`, and `moved` rows stay as history, which is exactly why step 3 treats them as occupied. **Pace factor** = average of (actual focused hours ÷ estimated hours) over `focus_logs` **where `task_id is not null`**, clamped to 0.5–3.0; the clamp mirrors the `pace_factor` CHECK, so an out-of-range write is rejected by Postgres — clamp before writing.
+Stretch: **replan** deletes only future `planned` sessions and inserts a new batch with `plan_version = max + 1`; `done`, `skipped`, and `moved` rows stay, which is why step 3 counts them as fixed. **Pace factor** = average of (actual focused hours ÷ estimated hours) over `focus_logs` **where `task_id is not null`**, clamped to 0.5–3.0; the clamp mirrors the `pace_factor` CHECK, so an out-of-range write is rejected by Postgres — clamp before writing.
 
 ## 6. Focus flow
 
