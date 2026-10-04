@@ -43,6 +43,33 @@ Core loop: tasks + fixed commitments → AI builds a weekly schedule → the use
 
 Next.js 16.3.8 (App Router) · React 19.2.8 · TypeScript 5 (`strict: true`, alias `@/*` → `src/*`) · Tailwind CSS 4 (`@import "tailwindcss"` in `src/app/globals.css`, tokens in `@theme inline`) · Supabase (`@supabase/ssr` + `@supabase/supabase-js`) · deployed on Vercel. Details in `ARCHITECTURE.md`.
 
+## Theme — use tokens, never hardcoded colors
+
+Every color lives in `src/app/globals.css`. **Light mode only, by design:** there is no dark theme, and no `dark:` variants. If a dark theme is ever wanted, it is its own slice with its own token block — do not sprinkle `dark:` variants in.
+
+Use the Tailwind token utilities. Never write `text-zinc-900`, `bg-black/5`, `text-[#4A3426]`, or any other literal color in a component. To change the look, edit `globals.css` only.
+
+| Token | Classes | Use for |
+| --- | --- | --- |
+| background `#FFF8EC` | `bg-background` | page surface |
+| card `#FFFDF8` | `bg-card` | cards, input fills |
+| border `#F0E2C8` | `border-line`, `divide-line` | card edges, dividers, header |
+| border-strong `#A8825A` | `border-line-strong` | **inputs and form controls only** |
+| text `#4A3426` | `text-ink` | all body text, headings, button labels |
+| muted `#8A7565` | `text-muted` | secondary text at **16px or larger only** |
+| muted-strong `#7A6555` | `text-muted-strong` | every text under 16px: hints, labels, errors |
+| primary `#FFC773` | `bg-primary` | buttons, active nav pill (always with `text-ink`) |
+| accents | `bg-accent-pink`, `-sage`, `-sky`, `-lavender` | reserved for course colors, calendar and session blocks |
+| danger `#E58B8B` | `bg-danger` | error banner background **only**, never a text color |
+
+Also tokens, not literals: `rounded-card` (20px), `rounded-pill`, `shadow-soft`.
+
+Two constraints the measured contrast ratios force:
+
+- **`text-muted` is 4.1:1 on the background, which fails WCAG AA below 16px.** Anything smaller uses `text-muted-strong` (~5.2:1). That covers form hints, field labels, and error text.
+- **`border-line` is 1.3:1 and nearly invisible.** It is for decorative edges only. Inputs and form controls use `border-line-strong` (~3.4:1) plus a focus ring in `text-ink`, so the edges survive a projector or a dim laptop screen.
+- **`text-danger` is banned.** `danger` as text on cream drops to roughly 2:1. Pair it as `bg-danger` with `text-ink`.
+
 ## Commands
 
 | Command | Purpose |
@@ -73,6 +100,10 @@ See `CONSTRAINTS.md`. The ones that bite most often: RLS stays on for every tabl
 ## Current state of this repo
 
 - `next dev` rewrites the `nextjs-agent-rules` block at the top of this file. Keep it byte-for-byte.
-- `src/` contains only the starter `app/layout.tsx`, `app/page.tsx`, `app/globals.css`. The structure in `ARCHITECTURE.md` is the target, not what exists — `src/lib/` has no files yet.
+- Auth and onboarding are built: `(auth)` sign up / log in, `src/proxy.ts` session refresh, the `(app)` auth guard, the `(main)` onboarded guard, and the profile upsert. `/settings` is the only editor of an existing profile.
+- **The pastel theme is light mode only.** No `dark:` variants, no `prefers-color-scheme` block. Colors live in `globals.css` and nowhere else.
+- Tasks, commitments, planner, calendar, and focus are not started.
+- **`src/proxy.ts`, not `middleware.ts`.** Next.js 16 renamed it. Supabase's published guide still says `middleware.ts`, and a file with that name is silently ignored — route protection would appear to work in dev and never fire in production.
+- **`time` columns come back as `"HH:MM:SS"`.** Pass every one through `toHhMm()` from `src/lib/types.ts` before it reaches an `<input type="time">`.
 - `supabase/schema.sql` holds the real schema and has been applied in Supabase. It is still run by hand, so every change must be handed back as runnable SQL and mirrored into `src/lib/types.ts`.
 - `app/layout.tsx` metadata is still the `Create Next App` default; update it when the first real screen lands.
