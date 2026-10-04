@@ -47,6 +47,8 @@ src/
     form.tsx                          FormCard, Field, SubmitButton, inputClassName,
                                       secondaryButtonClassName
     ScheduleForm.tsx                  one form, two modes: onboarding and settings
+    TaskForm.tsx                      one form, two modes: create and edit a task
+    TaskActions.tsx                   "use client", per-row mark-done and delete
     AppNav.tsx                        "use client", usePathname active link
     LoginForm, SignupForm, SignOutButton, AuthFooter
   lib/
@@ -56,6 +58,8 @@ src/
     data/                             ALL database access lives here
       profile.ts tasks.ts commitments.ts courses.ts sessions.ts focusLogs.ts
     validation.ts                     hand-rolled validators mirroring the CHECKs
+    dates.ts                          date and time formatting: toHhMm, due-soon state,
+                                      the `datetime-local` value for an instant
     timezones.ts                      time zone select options
     planner/
       score.ts                        deterministic priority score

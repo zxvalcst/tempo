@@ -4,22 +4,8 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { Field, FormCard, SubmitButton, inputClassName } from "@/components/form";
 import { toDateTimeLocalValue } from "@/lib/dates";
-import {
-  TASK_STATUSES,
-  TASK_TYPES,
-  type Task,
-  type TaskStatus,
-  type TaskType,
-} from "@/lib/types";
+import { TASK_STATUSES, TASK_TYPES, type TaskWithCourse } from "@/lib/types";
 import type { CrudFormState } from "@/lib/validation";
-
-const typeChip: Record<TaskType, string> = {
-  assignment: "bg-accent-sky",
-  project: "bg-accent-lavender",
-  exam: "bg-accent-pink",
-  quiz: "bg-accent-sage",
-  other: "bg-primary",
-};
 
 export function TaskForm({
   action,
@@ -29,7 +15,7 @@ export function TaskForm({
 }: {
   action: (state: CrudFormState, formData: FormData) => Promise<CrudFormState>;
   courses: string[];
-  task?: Task | null;
+  task?: TaskWithCourse | null;
   timeZone: string;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
@@ -171,7 +157,7 @@ export function TaskForm({
             type="checkbox"
             name="is_group"
             defaultChecked={task?.is_group ?? false}
-            className="size-4 rounded border-line-strong accent-[color:var(--primary)]"
+            className="size-4 rounded border-line-strong accent-primary"
           />
           Group project
         </label>
@@ -191,5 +177,3 @@ export function TaskForm({
     </FormCard>
   );
 }
-
-export { typeChip };

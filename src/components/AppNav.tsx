@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const links = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/tasks", label: "Tasks" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -14,7 +15,8 @@ export function AppNav() {
   return (
     <nav className="flex items-center gap-1">
       {links.map((link) => {
-        const active = pathname === link.href;
+        // Sub-routes such as /tasks/new keep their parent lit.
+        const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
 
         return (
           <Link

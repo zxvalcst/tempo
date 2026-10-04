@@ -102,7 +102,7 @@ See `CONSTRAINTS.md`. The ones that bite most often: RLS stays on for every tabl
 - `next dev` rewrites the `nextjs-agent-rules` block at the top of this file. Keep it byte-for-byte.
 - Auth and onboarding are built: `(auth)` sign up / log in, `src/proxy.ts` session refresh, the `(app)` auth guard, the `(main)` onboarded guard, and the profile upsert. `/settings` is the only editor of an existing profile.
 - **The pastel theme is light mode only.** No `dark:` variants, no `prefers-color-scheme` block. Colors live in `globals.css` and nowhere else.
-- Tasks, commitments, planner, calendar, and focus are not started.
+- **Commitments, planner, calendar, and focus are not started.** Tasks CRUD is built: a `/tasks` list with overdue / due-soon flags, `/tasks/new` and `/tasks/[id]` forms, a course datalist that creates a course on a new name, and a delete confirmation that states how many planned sessions the cascade removes.
 - **`src/proxy.ts`, not `middleware.ts`.** Next.js 16 renamed it. Supabase's published guide still says `middleware.ts`, and a file with that name is silently ignored — route protection would appear to work in dev and never fire in production.
 - **`time` columns come back as `"HH:MM:SS"`.** Pass every one through `toHhMm()` from `src/lib/types.ts` before it reaches an `<input type="time">`.
 - `supabase/schema.sql` holds the real schema and has been applied in Supabase. It is still run by hand, so every change must be handed back as runnable SQL and mirrored into `src/lib/types.ts`.

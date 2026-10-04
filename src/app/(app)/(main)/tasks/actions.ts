@@ -6,12 +6,16 @@ import { resolveCourse } from "@/lib/data/courses";
 import { createTask, deleteTask, setTaskStatus, updateTask } from "@/lib/data/tasks";
 import {
   hasErrors,
+  isUuid,
   parseTaskForm,
   validateTask,
   type CrudFormState,
 } from "@/lib/validation";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** The datalist sends a course name; `resolveCourse` turns it into an id. */
+function courseName(formData: FormData): string {
+  return String(formData.get("course") ?? "");
+}
 
 export async function createTaskAction(
   _prev: CrudFormState,
@@ -23,9 +27,7 @@ export async function createTaskAction(
   if (hasErrors(errors)) return { errors };
 
   try {
-    const courseId = values.course_id ?? (await resolveCourse(String(formData.get("course") ?? "")));
-
-    await createTask({ ...values, course_id: courseId });
+    await createTask({ ...values, course_id: await resolveCourse(courseName(formData)) });
   } catch {
     return { message: "Could not save that task. Please try again." };
   }
@@ -39,7 +41,7 @@ export async function updateTaskAction(
   formData: FormData,
 ): Promise<CrudFormState> {
   const id = String(formData.get("id") ?? "");
-  if (!UUID.test(id)) return { message: "That task no longer exists." };
+  if (!isUuid(id)) return { message: "That task no longer exists." };
 
   const values = parseTaskForm(formData);
   const errors = validateTask(values);
@@ -47,9 +49,7 @@ export async function updateTaskAction(
   if (hasErrors(errors)) return { errors };
 
   try {
-    const courseId = values.course_id ?? (await resolveCourse(String(formData.get("course") ?? "")));
-
-    await updateTask(id, { ...values, course_id: courseId });
+    await updateTask(id, { ...values, course_id: await resolveCourse(courseName(formData)) });
   } catch {
     return { message: "Could not update that task. Please try again." };
   }
@@ -57,31 +57,40 @@ export async function updateTaskAction(
   revalidatePath("/tasks");
   redirect("/tasks");
 }
-
-export async function toggleTaskDoneAction(formData: FormData): Promise<void> {
+export async function toggleTaskDoneAction(
+  _prev: CrudFormState,
+  formData: FormData,
+): Promise<CrudFormState> {
   const id = String(formData.get("id") ?? "");
   const next = String(formData.get("next") ?? "");
 
-  if (!UUID.test(id) || (next !== "done" && next !== "todo")) return;
+  if (!isUuid(id)) return { message: "That task no longer exists." };
+  if (next !== "done" && next !== "todo") return { message: "That status is not allowed." };
 
   try {
     await setTaskStatus(id, next);
   } catch {
-    return;
+    return { message: "Could not update that task." };
   }
 
   revalidatePath("/tasks");
+  return {};
 }
 
-export async function deleteTaskAction(formData: FormData): Promise<void> {
+export async function deleteTaskAction(
+  _prev: CrudFormState,
+  formData: FormData,
+): Promise<CrudFormState> {
   const id = String(formData.get("id") ?? "");
-  if (!UUID.test(id)) return;
+
+  if (!isUuid(id)) return { message: "That task no longer exists." };
 
   try {
     await deleteTask(id);
   } catch {
-    return;
+    return { message: "Could not delete that task." };
   }
 
   revalidatePath("/tasks");
+  return {};
 }

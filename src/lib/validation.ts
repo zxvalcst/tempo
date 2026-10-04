@@ -125,6 +125,13 @@ export function hasErrors(errors: FieldErrors): boolean {
   return Object.keys(errors).length > 0;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Ids arrive from the URL and form posts, so they are checked before any write. */
+export function isUuid(value: string): boolean {
+  return UUID.test(value);
+}
+
 /* ---------- tasks ---------- */
 
 export type CrudFormState = {
@@ -136,9 +143,10 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d
 
 /**
  * A past deadline is deliberately allowed, otherwise an overdue task could not
- * be edited — which is exactly when someone needs to edit it.
+ * be edited — which is exactly when someone needs to edit it. The schema has no
+ * such CHECK either, only `deadline not null`.
  */
-export function validateTask(input: TaskInput): FieldErrors {
+export function validateTask(input: Omit<TaskInput, "course_id">): FieldErrors {
   const errors: FieldErrors = {};
 
   if (input.title.trim().length === 0) errors.title = "Give the task a title.";
@@ -169,14 +177,13 @@ export function validateTask(input: TaskInput): FieldErrors {
  * id through `resolveCourse`. Keeping it out of here means one code path for
  * picking an existing course and creating a new one.
  */
-export function parseTaskForm(formData: FormData): TaskInput {
+export function parseTaskForm(formData: FormData): Omit<TaskInput, "course_id"> {
   const rawDeadline = String(formData.get("deadline") ?? "").trim();
   const deadline = new Date(rawDeadline);
   const isGroup = formData.get("is_group") === "on";
 
   return {
     title: String(formData.get("title") ?? "").trim(),
-    course_id: null,
     type: String(formData.get("type") ?? "") as TaskInput["type"],
     // `datetime-local` carries no zone, so it is resolved in the browser's own
     // zone and stored as the UTC instant. An unparseable value is passed
