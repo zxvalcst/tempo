@@ -93,7 +93,7 @@ See `CONSTRAINTS.md`. The ones that bite most often: RLS stays on for every tabl
 - **Replan deletes only future `planned` sessions.** `done`, `skipped`, and `moved` rows stay.
 - **Fixed time never moves**: commitments, `moved` sessions, `done` sessions, and any session with a focus timer currently running. `moved` means the user placed it — never overwrite those times. `skipped` is terminal history and does not block.
 - **`tasks.status = 'in_progress'` does not occupy time** by itself; a task blocks hours only through its own sessions. Ranking comes solely from the priority score — status never re-orders it.
-- **Deleting a task cascades to its sessions.** The confirmation dialog must say how many planned sessions will be removed before the delete happens.
+- **Deleting a task cascades to its sessions.** The confirmation dialog must warn about it before the delete happens, using the static wording "This also removes any scheduled study blocks for this task." **Never query a session count to fill that number in** — the static sentence costs nothing and a count would mean an extra query per row.
 - **The pace factor ignores `focus_logs` rows with a null `task_id`** — untimed free focus has no estimate to compare against.
 - **Store `focused_minutes` with one decimal** (`numeric(6,1)`), computed from elapsed milliseconds. Never a rounded integer.
 
@@ -102,8 +102,8 @@ See `CONSTRAINTS.md`. The ones that bite most often: RLS stays on for every tabl
 - `next dev` rewrites the `nextjs-agent-rules` block at the top of this file. Keep it byte-for-byte.
 - Auth and onboarding are built: `(auth)` sign up / log in, `src/proxy.ts` session refresh, the `(app)` auth guard, the `(main)` onboarded guard, and the profile upsert. `/settings` is the only editor of an existing profile.
 - **The pastel theme is light mode only.** No `dark:` variants, no `prefers-color-scheme` block. Colors live in `globals.css` and nowhere else.
-- **Commitments, planner, calendar, and focus are not started.** Tasks CRUD is built: a `/tasks` list with overdue / due-soon flags, `/tasks/new` and `/tasks/[id]` forms, a course datalist that creates a course on a new name, and a delete confirmation that states how many planned sessions the cascade removes.
+- **Tasks and commitments CRUD are built.** `/tasks` and `/commitments` list, `/new` and `/[id]` forms on both, a course datalist on the task form, day-of-week grouping on commitments, and a delete confirmation on tasks carrying the static cascade warning. The dashboard shows Today and Needs attention with no AI. **Planner, calendar, and focus are not started.**
 - **`src/proxy.ts`, not `middleware.ts`.** Next.js 16 renamed it. Supabase's published guide still says `middleware.ts`, and a file with that name is silently ignored — route protection would appear to work in dev and never fire in production.
-- **`time` columns come back as `"HH:MM:SS"`.** Pass every one through `toHhMm()` from `src/lib/types.ts` before it reaches an `<input type="time">`.
+- **`time` columns come back as `"HH:MM:SS"`.** Pass every one through `toHhMm()` from `src/lib/dates.ts` before it reaches an `<input type="time">`.
 - `supabase/schema.sql` holds the real schema and has been applied in Supabase. It is still run by hand, so every change must be handed back as runnable SQL and mirrored into `src/lib/types.ts`.
 - `app/layout.tsx` metadata is still the `Create Next App` default; update it when the first real screen lands.

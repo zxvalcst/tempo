@@ -3,7 +3,8 @@ import { ScheduleForm } from "@/components/ScheduleForm";
 import { saveSettingsAction } from "@/app/(app)/actions";
 import { getProfile } from "@/lib/data/profile";
 import { timeZoneOptions } from "@/lib/timezones";
-import { ONBOARDING_DEFAULTS, toHhMm, type OnboardingInput } from "@/lib/types";
+import { toHhMm } from "@/lib/dates";
+import { ONBOARDING_DEFAULTS, type OnboardingInput } from "@/lib/types";
 
 export const metadata: Metadata = {
   title: "Settings · Tempo",

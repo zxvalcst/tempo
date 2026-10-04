@@ -5,7 +5,7 @@ import { secondaryButtonClassName } from "@/components/form";
 import { TaskActions } from "@/components/TaskActions";
 import { dueState, formatDeadline } from "@/lib/dates";
 import { getProfile } from "@/lib/data/profile";
-import { listTaskSessionCounts, listTasks } from "@/lib/data/tasks";
+import { listTasks } from "@/lib/data/tasks";
 import type { TaskType } from "@/lib/types";
 
 export const metadata: Metadata = {
@@ -21,11 +21,7 @@ const typeChip: Record<TaskType, string> = {
 };
 
 export default async function TasksPage() {
-  const [profile, tasks, sessionCounts] = await Promise.all([
-    getProfile(),
-    listTasks(),
-    listTaskSessionCounts(),
-  ]);
+  const [profile, tasks] = await Promise.all([getProfile(), listTasks()]);
 
   if (!profile) redirect("/onboarding");
 
@@ -124,7 +120,6 @@ export default async function TasksPage() {
                     taskId={task.id}
                     title={task.title}
                     isDone={task.status === "done"}
-                    sessionCount={sessionCounts[task.id] ?? 0}
                   />
                 </div>
               </li>

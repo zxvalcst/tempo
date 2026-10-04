@@ -1,5 +1,14 @@
 import { DAY_NAMES } from "@/lib/types";
 
+/**
+ * "23:00:00" -> "23:00". PostgREST returns every `time` column with seconds,
+ * and an `<input type="time">` only accepts "HH:MM". Leaves an already-short
+ * value untouched.
+ */
+export function toHhMm(value: string): string {
+  return value.slice(0, 5);
+}
+
 /** A deadline this close is flagged as due soon. */
 export const DUE_SOON_HOURS = 48;
 
@@ -76,4 +85,34 @@ export function toDateTimeLocalValue(iso: string, timeZone: string): string {
 
 export function dayName(dayOfWeek: number): string {
   return DAY_NAMES[dayOfWeek] ?? "Unknown";
+}
+
+/**
+ * The user's own calendar date as "YYYY-MM-DD", which is the shape a Postgres
+ * `date` column arrives in. Derived from the zone rather than from the server
+ * clock, so someone west of UTC gets their own day.
+ */
+export function dateOnlyIn(timeZone: string, at: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(at);
+}
+
+/** The weekday index (0 = Sunday) in the user's own zone. */
+export function dayOfWeekIn(timeZone: string, at: Date = new Date()): number {
+  // The date-only string is UTC midnight, so read the weekday back in UTC too.
+  return new Date(`${dateOnlyIn(timeZone, at)}T00:00:00Z`).getUTCDay();
+}
+
+/** "Monday 6 October" in the user's own zone. */
+export function formatToday(timeZone: string, at: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(at);
 }

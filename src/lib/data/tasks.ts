@@ -60,30 +60,6 @@ export async function getTask(id: string): Promise<TaskWithCourse | null> {
   return task;
 }
 
-/**
- * How many sessions each task owns. Deleting a task cascades to all of them, so
- * the list uses this to warn before the delete goes through.
- */
-export async function listTaskSessionCounts(): Promise<Record<string, number>> {
-  const supabase = await createClient();
-
-  const { data, error } = await supabase.from("sessions").select("task_id").returns<
-    Array<{ task_id: string }>
-  >();
-
-  if (error) {
-    throw new Error("Could not load your planned sessions.");
-  }
-
-  const counts: Record<string, number> = {};
-
-  for (const row of data ?? []) {
-    counts[row.task_id] = (counts[row.task_id] ?? 0) + 1;
-  }
-
-  return counts;
-}
-
 export async function createTask(input: TaskInput): Promise<void> {
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();

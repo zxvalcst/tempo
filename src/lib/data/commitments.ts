@@ -17,6 +17,24 @@ export async function listCommitments(): Promise<Commitment[]> {
   return data;
 }
 
+/** One commitment, or null when it does not exist. */
+export async function getCommitment(id: string): Promise<Commitment | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("commitments")
+    .select("*")
+    .eq("id", id)
+    .returns<Commitment[]>()
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("Could not load that commitment.");
+  }
+
+  return data;
+}
+
 export async function createCommitment(input: CommitmentInput): Promise<void> {
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();

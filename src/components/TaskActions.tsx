@@ -11,12 +11,10 @@ export function TaskActions({
   taskId,
   title,
   isDone,
-  sessionCount,
 }: {
   taskId: string;
   title: string;
   isDone: boolean;
-  sessionCount: number;
 }) {
   const [toggleState, toggleAction, togglePending] = useActionState(toggleTaskDoneAction, {});
   const [deleteState, deleteAction, deletePending] = useActionState(deleteTaskAction, {});
@@ -38,12 +36,10 @@ export function TaskActions({
             type="submit"
             disabled={deletePending}
             onClick={(event) => {
-              // Deleting a task cascades to its sessions, so the count is stated
-              // before anything happens.
+              // Static wording on purpose: counting the sessions would mean an
+              // extra query per row just to fill in a number.
               const cascade =
-                sessionCount > 0
-                  ? ` This also removes ${sessionCount} planned session(s) for this task.`
-                  : "";
+                " This also removes any scheduled study blocks for this task.";
 
               if (!window.confirm(`Delete "${title}"?${cascade}`)) {
                 event.preventDefault();

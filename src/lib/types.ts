@@ -6,7 +6,7 @@
  * Time convention: Postgres `time` columns (`sleep_start`, `sleep_end`,
  * `earliest_class_time`) are returned by PostgREST as "HH:MM:SS". An HTML
  * `<input type="time">` only accepts "HH:MM", so run every value through
- * `toHhMm()` before binding it to a form control.
+ * `toHhMm()` from `dates.ts` before binding it to a form control.
  *
  * A sleep window may cross midnight (23:00 -> 06:00 is valid); only equal
  * start and end is rejected. This is deliberately NOT the `commitments` rule,
@@ -46,11 +46,6 @@ export const ONBOARDING_DEFAULTS: OnboardingInput = {
   earliest_class_time: null,
   work_hours_per_day: 4,
 };
-
-/** "23:00:00" -> "23:00". Leaves an already-short value untouched. */
-export function toHhMm(value: string): string {
-  return value.slice(0, 5);
-}
 
 /* ---------- courses ---------- */
 

@@ -48,7 +48,9 @@ src/
                                       secondaryButtonClassName
     ScheduleForm.tsx                  one form, two modes: onboarding and settings
     TaskForm.tsx                      one form, two modes: create and edit a task
+    CommitmentForm.tsx                one form, two modes: create and edit a commitment
     TaskActions.tsx                   "use client", per-row mark-done and delete
+    CommitmentRow.tsx                 one commitment row, shared by the day and date groups
     AppNav.tsx                        "use client", usePathname active link
     LoginForm, SignupForm, SignOutButton, AuthFooter
   lib/
@@ -59,7 +61,8 @@ src/
       profile.ts tasks.ts commitments.ts courses.ts sessions.ts focusLogs.ts
     validation.ts                     hand-rolled validators mirroring the CHECKs
     dates.ts                          date and time formatting: toHhMm, due-soon state,
-                                      the `datetime-local` value for an instant
+                                      the `datetime-local` value for an instant, and the
+                                      weekday/date of "today" in the user's own zone
     timezones.ts                      time zone select options
     planner/
       score.ts                        deterministic priority score
@@ -173,13 +176,13 @@ Postgres
 - `end_time > start_time` on `commitments` means no commitment crosses midnight. The sleep window (`23:00` → `06:00`) does cross it, so `slots.ts` must handle the wrap.
 - `updated_at` exists **only** on `profiles` and `tasks`, via the `set_updated_at()` trigger. Never read or write it elsewhere.
 - `deadline`, `planned_start`, `planned_end`, `started_at`, `ended_at` are `timestamptz` — store and compare UTC. `start_time`, `end_time`, `sleep_start`, `sleep_end`, `earliest_class_time` are `time` (local wall-clock).
-- **PostgREST returns `time` columns as `"HH:MM:SS"`.** An `<input type="time">` only accepts `"HH:MM"`, so run every `time` value through `toHhMm()` from `src/lib/types.ts` before binding it to a form control. Forgetting it yields a silently blank input, not an error.
+- **PostgREST returns `time` columns as `"HH:MM:SS"`.** An `<input type="time">` only accepts `"HH:MM"`, so run every `time` value through `toHhMm()` from `src/lib/dates.ts` before binding it to a form control. Forgetting it yields a silently blank input, not an error.
 - The sleep window **may cross midnight**; only `sleep_start = sleep_end` is rejected. This is the opposite of the `commitments` rule above — do not apply one to the other.
 - `timezone` is `text`, not a Postgres tz type. Validate the onboarding value against `Intl.supportedValuesOf('timeZone')`.
 
 ### Deletion behaviour (intentional, keep it)
 
-- `tasks → sessions` is `on delete cascade`: deleting a task deletes its sessions, including `moved` ones. The delete-task confirmation **must** say so — "this also removes N planned session(s) for this task" — before the delete goes through.
+- `tasks → sessions` is `on delete cascade`: deleting a task deletes its sessions, including `moved` ones. The delete-task confirmation **must** say so before the delete goes through, using the static sentence "This also removes any scheduled study blocks for this task." Do not count the sessions to fill in a number — the warning is static by design, so no query is needed.
 - `focus_logs.task_id` is `on delete set null`, and `focus_logs.session_id` likewise. Deleting a task never destroys the user's focus history.
 - A `focus_logs` row with `task_id = null` came from untimed free focus. It has no estimate to compare against, so **the pace factor must ignore it** — filter `task_id is not null` before averaging.
 

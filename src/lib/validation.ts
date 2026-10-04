@@ -141,6 +141,9 @@ export type CrudFormState = {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
+/** Postgres `date` columns are plain "YYYY-MM-DD", with no time part. */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
 /**
  * A past deadline is deliberately allowed, otherwise an overdue task could not
  * be edited — which is exactly when someone needs to edit it. The schema has no
@@ -213,11 +216,27 @@ export function validateCommitment(input: CommitmentInput): FieldErrors {
     errors.end_time = "End must be after start.";
   }
 
-  const hasDay = input.day_of_week !== null;
-  const hasDate = input.specific_date !== null;
+  // Mirrors the exactly-one CHECK plus `day_of_week between 0 and 6`, so a
+  // hand-crafted post gets a field error instead of a Postgres 400.
+  if (input.is_recurring) {
+    if (input.day_of_week === null) {
+      errors.day_of_week = "Choose a day.";
+    } else if (
+      !Number.isInteger(input.day_of_week) ||
+      input.day_of_week < 0 ||
+      input.day_of_week > 6
+    ) {
+      errors.day_of_week = "Choose a day of the week.";
+    }
+  } else if (input.specific_date === null) {
+    errors.specific_date = "Choose a date.";
+  } else if (!DATE_ONLY.test(input.specific_date)) {
+    errors.specific_date = "Choose a valid date.";
+  }
 
-  if (input.is_recurring && !hasDay) errors.day_of_week = "Choose a day.";
-  if (!input.is_recurring && !hasDate) errors.specific_date = "Choose a date.";
+  if (input.day_of_week !== null && input.specific_date !== null) {
+    errors.day_of_week = "Use either a weekday or a date, not both.";
+  }
 
   return errors;
 }
