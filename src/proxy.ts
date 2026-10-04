@@ -50,6 +50,13 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+/**
+ * Everything except the two public auth pages and static assets, so a new
+ * route is protected the moment it is created. A future public page must be
+ * added to this list explicitly.
+ */
 export const config = {
-  matcher: ["/dashboard/:path*", "/settings/:path*", "/tasks/:path*"],
+  matcher: [
+    "/((?!login|signup|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)",
+  ],
 };

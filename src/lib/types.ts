@@ -51,3 +51,97 @@ export const ONBOARDING_DEFAULTS: OnboardingInput = {
 export function toHhMm(value: string): string {
   return value.slice(0, 5);
 }
+
+/* ---------- courses ---------- */
+
+export type Course = {
+  id: string;
+  user_id: string;
+  name: string;
+  color: string;
+  created_at: string;
+};
+
+/* ---------- tasks ---------- */
+
+export const TASK_TYPES = ["assignment", "project", "exam", "quiz", "other"] as const;
+export type TaskType = (typeof TASK_TYPES)[number];
+
+export const TASK_STATUSES = ["todo", "in_progress", "done"] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+
+export type Task = {
+  id: string;
+  user_id: string;
+  course_id: string | null;
+  title: string;
+  type: TaskType;
+  deadline: string;
+  grade_weight: number;
+  difficulty: number;
+  estimated_hours: number;
+  priority_override: number | null;
+  is_group: boolean;
+  status: TaskStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** A task plus the course name resolved for display. */
+export type TaskWithCourse = Task & {
+  course_name: string | null;
+};
+
+export type TaskInput = {
+  title: string;
+  course_id: string | null;
+  type: TaskType;
+  deadline: string;
+  grade_weight: number;
+  difficulty: number;
+  estimated_hours: number;
+  is_group: boolean;
+  status: TaskStatus;
+};
+
+/* ---------- commitments ---------- */
+
+export const COMMITMENT_CATEGORIES = ["class", "org", "church", "committee", "other"] as const;
+export type CommitmentCategory = (typeof COMMITMENT_CATEGORIES)[number];
+
+/** 0 = Sunday ... 6 = Saturday, matching JavaScript `Date.getDay()`. */
+export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+export const DAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
+export type Commitment = {
+  id: string;
+  user_id: string;
+  title: string;
+  category: CommitmentCategory;
+  is_recurring: boolean;
+  day_of_week: number | null;
+  specific_date: string | null;
+  start_time: string;
+  end_time: string;
+  created_at: string;
+};
+
+export type CommitmentInput = {
+  title: string;
+  category: CommitmentCategory;
+  is_recurring: boolean;
+  day_of_week: number | null;
+  specific_date: string | null;
+  start_time: string;
+  end_time: string;
+};
