@@ -6,6 +6,7 @@ import { listCommitments } from "@/lib/data/commitments";
 import { getProfile, saveOnboarding } from "@/lib/data/profile";
 import {
   completedMinutesByTask,
+  deleteAllPlanned,
   deleteFuturePlanned,
   insertPlannedBatch,
   listFixedSessions,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/data/sessions";
 import { listTasks } from "@/lib/data/tasks";
 import { buildWeek } from "@/lib/planner/schedule";
+import { explainPlan } from "@/lib/planner/llm";
 import { validatePlan } from "@/lib/planner/validate";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -71,15 +73,7 @@ export async function signOut(): Promise<void> {
   redirect("/login");
 }
 
-/**
- * Builds the coming week deterministically. No LLM yet: the scheduler decides
- * everything and `validatePlan` gates the result before a single row is written.
- *
- * Only *future* `planned` sessions are deleted. `done`, `skipped` and `moved`
- * stay exactly where the user left them, which is also why the scheduler counts
- * `moved` and `done` as immovable time.
- */
-export async function generatePlanAction(_prev: PlanFormState): Promise<PlanFormState> {
+export async function generatePlanAction(): Promise<PlanFormState> {
   const now = new Date();
 
   try {
@@ -116,6 +110,26 @@ export async function generatePlanAction(_prev: PlanFormState): Promise<PlanForm
       };
     }
 
+    // Ask the LLM to rewrite explanations and provide a weekly summary.
+    // On any failure, we keep the deterministic reasons from buildWeek.
+    let summary: string | undefined;
+    let aiUnavailable = false;
+
+    const llmResult = await explainPlan(tasks, sessions, profile);
+    if (llmResult) {
+      // Map LLM reasons back to sessions by index
+      const reasonsByIndex = new Map(llmResult.reasons.map((r) => [r.index, r.reason]));
+      for (let i = 0; i < sessions.length; i++) {
+        const llmReason = reasonsByIndex.get(i);
+        if (llmReason) {
+          sessions[i].reason = llmReason;
+        }
+      }
+      summary = llmResult.summary;
+    } else {
+      aiUnavailable = true;
+    }
+
     const version = previousVersion + 1;
 
     await deleteFuturePlanned(now.toISOString());
@@ -129,11 +143,27 @@ export async function generatePlanAction(_prev: PlanFormState): Promise<PlanForm
         placed: 0,
         version,
         message: "Nothing to schedule: no open tasks are due in the next 7 days.",
+        aiUnavailable,
       };
     }
 
-    return { placed: sessions.length, version };
+    return { placed: sessions.length, version, summary, aiUnavailable };
   } catch {
     return { message: "Could not build your plan. Please try again.", error: true };
+  }
+}
+
+/**
+ * Clears the current plan by deleting ALL `planned` sessions.
+ * `done`, `skipped`, and `moved` sessions are preserved.
+ */
+export async function clearPlanAction(): Promise<PlanFormState> {
+  try {
+    await deleteAllPlanned();
+    revalidatePath("/dashboard");
+    revalidatePath("/tasks");
+    return { message: "Plan cleared.", placed: 0, version: 0 };
+  } catch {
+    return { message: "Could not clear your plan. Please try again.", error: true };
   }
 }

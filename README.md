@@ -20,6 +20,25 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Environment Variables
+
+Create a `.env.local` file with the following variables:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your-project-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+
+# Server-only: Groq API key for AI-powered plan explanations
+LLM_API_KEY=gsk_...
+
+# Optional: Groq model name (default: llama-3.3-70b-versatile)
+LLM_MODEL=llama-3.3-70b-versatile
+```
+
+- `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are required for Supabase auth and database access.
+- `LLM_API_KEY` is **server-only** (no `NEXT_PUBLIC_` prefix) and used for the AI weekly planner explanations.
+- `LLM_MODEL` is optional; any Groq-hosted model that supports JSON mode will work.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

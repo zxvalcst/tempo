@@ -145,6 +145,8 @@ export type PlanFormState = {
   placed?: number;
   version?: number;
   error?: boolean;
+  summary?: string;      // LLM weekly summary
+  aiUnavailable?: boolean; // true when LLM failed and we used deterministic reasons
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;

@@ -112,6 +112,23 @@ export async function deleteFuturePlanned(now: string): Promise<void> {
   }
 }
 
+/**
+ * Deletes ALL `planned` rows regardless of time. `done`, `skipped` and `moved`
+ * are kept. Used when the user explicitly clears their plan.
+ */
+export async function deleteAllPlanned(): Promise<void> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("sessions")
+    .delete()
+    .eq("status", "planned");
+
+  if (error) {
+    throw new Error("Could not clear your plan.");
+  }
+}
+
 export async function insertPlannedBatch(
   rows: PlannedSession[],
   version: number,
