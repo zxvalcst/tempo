@@ -139,6 +139,14 @@ export type CrudFormState = {
   message?: string;
 };
 
+/** Result of a "Generate plan" run. `error` picks the notice tone. */
+export type PlanFormState = {
+  message?: string;
+  placed?: number;
+  version?: number;
+  error?: boolean;
+};
+
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
 /** Postgres `date` columns are plain "YYYY-MM-DD", with no time part. */

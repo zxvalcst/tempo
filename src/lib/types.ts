@@ -140,3 +140,35 @@ export type CommitmentInput = {
   start_time: string;
   end_time: string;
 };
+
+/* ---------- sessions ---------- */
+
+/** There is no `in_progress` session status: in-progress work is
+ *  `tasks.status = 'in_progress'`. `sessions` has no `updated_at`. */
+export const SESSION_STATUSES = ["planned", "done", "skipped", "moved"] as const;
+export type SessionStatus = (typeof SESSION_STATUSES)[number];
+
+export type Session = {
+  id: string;
+  user_id: string;
+  task_id: string;
+  planned_start: string;
+  planned_end: string;
+  status: SessionStatus;
+  ai_reason: string | null;
+  plan_version: number;
+  created_at: string;
+};
+
+/** A session plus the task title, for display. */
+export type SessionWithTask = Session & {
+  task_title: string;
+};
+
+/** What the planner produces before validation, and what gets inserted. */
+export type PlannedSession = {
+  task_id: string;
+  start: string;
+  end: string;
+  reason: string;
+};

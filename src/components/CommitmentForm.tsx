@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useState, FormEvent } from "react";
 import { Field, FormCard, SubmitButton, inputClassName } from "@/components/form";
 import { toHhMm } from "@/lib/dates";
 import { COMMITMENT_CATEGORIES, DAY_NAMES, type Commitment } from "@/lib/types";
@@ -14,12 +14,28 @@ export function CommitmentForm({
   action: (state: CrudFormState, formData: FormData) => Promise<CrudFormState>;
   commitment?: Commitment | null;
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, setState] = useState<CrudFormState>({});
+  const [pending, setPending] = useState(false);
   const editing = Boolean(commitment);
 
   // A recurring block carries a weekday, a one-off carries a date, so only one
   // of the two is ever submitted.
   const [isRecurring, setIsRecurring] = useState(commitment?.is_recurring ?? true);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    try {
+      const formData = new FormData(event.currentTarget);
+      const result = await action({}, formData);
+      setState(result);
+    } catch (error) {
+      console.error("Commitment action failed:", error);
+      setState({ message: "Something went wrong. Please try again." });
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <FormCard
@@ -29,7 +45,7 @@ export function CommitmentForm({
       notice={state.message}
       tone="error"
     >
-      <form action={formAction} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {editing ? <input type="hidden" name="id" value={commitment?.id} /> : null}
 
         <Field id="title" label="Title" error={state.errors?.title}>
@@ -62,7 +78,7 @@ export function CommitmentForm({
           <input
             type="checkbox"
             name="is_recurring"
-            checked={isRecurring}
+            defaultChecked={commitment?.is_recurring ?? true}
             onChange={(event) => setIsRecurring(event.target.checked)}
             className="size-4 rounded border-line-strong accent-primary"
           />

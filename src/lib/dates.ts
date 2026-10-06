@@ -116,3 +116,144 @@ export function formatToday(timeZone: string, at: Date = new Date()): string {
     month: "long",
   }).format(at);
 }
+
+/**
+ * Everything below is the planner's zone arithmetic.
+ *
+ * The helpers above all go from an instant *to* local components. The planner
+ * needs the inverse as well: it thinks in local wall-clock minutes and only
+ * converts to a UTC instant at the moment it writes a `timestamptz`.
+ */
+
+/** "2026-10-04" plus n days. Plain UTC date math, so no zone is involved. */
+export function addDaysTo(dateOnly: string, days: number): string {
+  const date = new Date(`${dateOnly}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+/** The weekday (0 = Sunday) of a "YYYY-MM-DD" string. */
+export function weekdayOfDateOnly(dateOnly: string): number {
+  return new Date(`${dateOnly}T00:00:00Z`).getUTCDay();
+}
+
+/** "08:30:00" or "08:30" -> 510 minutes past local midnight. */
+export function minutesFromHhMm(value: string): number {
+  const [hours, minutes] = value.slice(0, 5).split(":").map(Number);
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 0;
+
+  return hours * 60 + minutes;
+}
+
+function zonedParts(at: Date, timeZone: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    // h23 matters: without it Intl can emit hour "24", which is midnight of the
+    // next day and would silently shift every boundary by an hour.
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(at);
+}
+
+function partValue(parts: Intl.DateTimeFormatPart[], type: string): number {
+  return Number(parts.find((part) => part.type === type)?.value ?? 0);
+}
+
+/** The zone's offset from UTC at an instant, in milliseconds (east is positive). */
+function zoneOffsetMs(at: Date, timeZone: string): number {
+  const parts = zonedParts(at, timeZone);
+
+  const asUtc = Date.UTC(
+    partValue(parts, "year"),
+    partValue(parts, "month") - 1,
+    partValue(parts, "day"),
+    partValue(parts, "hour"),
+    partValue(parts, "minute"),
+    partValue(parts, "second"),
+  );
+
+  // getTime() drops the milliseconds, so drop them here too before diffing.
+  return asUtc - Math.floor(at.getTime() / 1000) * 1000;
+}
+
+/** Minutes past local midnight for an instant, in the given zone. */
+export function localMinutes(at: Date, timeZone: string): number {
+  const parts = zonedParts(at, timeZone);
+  return partValue(parts, "hour") * 60 + partValue(parts, "minute");
+}
+
+/**
+ * The instant for a local wall-clock time — the inverse of `localMinutes`.
+ *
+ * Two passes, because the offset at the first naive guess can differ from the
+ * offset at the real instant whenever the guess lands on the far side of a DST
+ * transition. One pass is wrong for roughly one hour a year in each zone.
+ */
+export function zonedTimeToUtc(dateOnly: string, minutes: number, timeZone: string): Date {
+  const [year, month, day] = dateOnly.split("-").map(Number);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return new Date(Number.NaN);
+  }
+
+  const naive = Date.UTC(year, month - 1, day) + minutes * 60_000;
+  const firstGuess = naive - zoneOffsetMs(new Date(naive), timeZone);
+  const secondGuess = naive - zoneOffsetMs(new Date(firstGuess), timeZone);
+
+  return new Date(secondGuess);
+}
+
+export type LocalSegment = {
+  dateOnly: string;
+  /** Minutes past local midnight, inclusive. */
+  from: number;
+  /** Minutes past local midnight, exclusive. 1440 means local midnight. */
+  to: number;
+};
+
+/**
+ * The local wall-clock segments a UTC span covers, one per local day it touches.
+ * A session running 23:30 to 00:30 yields two segments, which is what makes
+ * sleep-window and daily-limit checks correct across midnight.
+ */
+export function localSegments(start: Date, end: Date, timeZone: string): LocalSegment[] {
+  const segments: LocalSegment[] = [];
+  const endMs = end.getTime();
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(endMs) || endMs <= start.getTime()) {
+    return segments;
+  }
+
+  let dateOnly = dateOnlyIn(timeZone, start);
+
+  // Bounded so a pathological zone can never spin here. Sessions are at most a
+  // couple of hours, so two or three days is already generous.
+  for (let guard = 0; guard < 4; guard += 1) {
+    const nextDateOnly = addDaysTo(dateOnly, 1);
+    const dayStartMs = zonedTimeToUtc(dateOnly, 0, timeZone).getTime();
+    const dayEndMs = zonedTimeToUtc(nextDateOnly, 0, timeZone).getTime();
+
+    const fromMs = Math.max(start.getTime(), dayStartMs);
+    const toMs = Math.min(endMs, dayEndMs);
+
+    if (toMs > fromMs) {
+      segments.push({
+        dateOnly,
+        from: localMinutes(new Date(fromMs), timeZone),
+        to: toMs >= dayEndMs ? 1440 : localMinutes(new Date(toMs), timeZone),
+      });
+    }
+
+    if (endMs <= dayEndMs) break;
+
+    dateOnly = nextDateOnly;
+  }
+
+  return segments;
+}
